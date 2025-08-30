@@ -79,6 +79,32 @@ export default function DemoSection() {
     setStarted(true);
     setPhase('form');
 
+    // SAFARI FIX: Initialize all audio immediately on user interaction
+    // This satisfies Safari's autoplay policy requirements
+    try {
+      if (musicA.current) {
+        musicA.current.volume = 0;
+        await musicA.current.play();
+        musicA.current.pause();
+        musicA.current.currentTime = 0;
+      }
+      if (musicB.current) {
+        musicB.current.volume = 0;
+        await musicB.current.play();
+        musicB.current.pause();
+        musicB.current.currentTime = 0;
+      }
+      if (voice.current) {
+        voice.current.volume = 0;
+        await voice.current.play();
+        voice.current.pause();
+        voice.current.currentTime = 0;
+      }
+    } catch (error) {
+      // Ignore errors - some browsers might still block
+      console.log('Audio initialization failed:', error);
+    }
+
     // Wait for form typing to complete (slower timing with field stagger)
     await wait(6500);
     setPhase('building');
@@ -363,8 +389,9 @@ async function play(a?: HTMLAudioElement | null, opts?: { fromStart?: boolean })
   try {
     if (opts?.fromStart) a.currentTime = 0;
     await a.play();
-  } catch {
-    // ignore if user gesture missing; Start Demo button should cover this
+  } catch (error) {
+    // Log the error for debugging but don't break the demo
+    console.log('Audio play failed:', error);
   }
 }
 function pause(a?: HTMLAudioElement | null) { a?.pause(); }
