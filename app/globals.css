@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { 
+  color-scheme: dark; 
+}
+
+html, body { 
+  height: 100%; 
+}
+
+body {
+  @apply text-off-white antialiased;
+  background: #121110;
+}
+
+.perspective-900 {
+  perspective: 900px;
+}
+
+.caret {
+  display: inline-block;
+  width: 1px;
+  background: #d1a442;
+  margin-left: 2px;
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes blink { 
+  50% { opacity: 0; } 
+}
+
+.nav-glass {
+  @apply backdrop-blur-md bg-white/5 border-b border-white/10;
+}
+
+:focus-visible { 
+  outline: 2px solid #d1a442; 
+  outline-offset: 2px; 
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { 
+    animation-duration: 0.001ms !important; 
+    animation-iteration-count: 1 !important; 
+    transition-duration: 0.001ms !important; 
+  }
+}
