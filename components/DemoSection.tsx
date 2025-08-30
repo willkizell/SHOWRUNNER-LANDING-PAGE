@@ -16,6 +16,11 @@ export default function DemoSection() {
   const musicA = useRef<HTMLAudioElement | null>(null);
   const musicB = useRef<HTMLAudioElement | null>(null);
   const voice  = useRef<HTMLAudioElement | null>(null);
+  
+  // Web Audio API refs for better volume control on Safari mobile
+  const audioContext = useRef<AudioContext | null>(null);
+  const musicAGain = useRef<GainNode | null>(null);
+  const musicASource = useRef<MediaElementAudioSourceNode | null>(null);
   const [playButtonPressed, setPlayButtonPressed] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -27,36 +32,72 @@ export default function DemoSection() {
     announcement_notes: string;
   } | null>(null);
 
-  // Volume ramping helper
+  // Volume ramping helper - uses Web Audio API for better Safari mobile support
   const rampVolume = (audio: HTMLAudioElement, from: number, to: number, ms: number) => {
     return new Promise<void>((resolve) => {
       console.log(`Ramping volume from ${from} to ${to} over ${ms}ms`);
-      const startTime = Date.now();
-      const startVolume = from;
-      const volumeDiff = to - from;
       
-      // Set initial volume
-      audio.volume = startVolume;
-      
-      const updateVolume = () => {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / ms, 1);
-        const newVolume = startVolume + (volumeDiff * progress);
+      // Try Web Audio API first (better for Safari mobile)
+      if (musicAGain.current && audio === musicA.current) {
+        const startTime = Date.now();
+        const startVolume = from;
+        const volumeDiff = to - from;
         
-        // Ensure volume is within valid range
-        audio.volume = Math.max(0, Math.min(1, newVolume));
+        musicAGain.current.gain.setValueAtTime(startVolume, audioContext.current!.currentTime);
         
-        if (progress < 1) {
-          requestAnimationFrame(updateVolume);
-        } else {
-          // Ensure final volume is set
-          audio.volume = Math.max(0, Math.min(1, to));
-          console.log(`Volume ramp complete. Final volume: ${audio.volume}`);
-          resolve();
-        }
-      };
-      
-      requestAnimationFrame(updateVolume);
+        const updateVolume = () => {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min(elapsed / ms, 1);
+          const newVolume = startVolume + (volumeDiff * progress);
+          
+          if (musicAGain.current) {
+            musicAGain.current.gain.setValueAtTime(
+              Math.max(0, Math.min(1, newVolume)), 
+              audioContext.current!.currentTime
+            );
+          }
+          
+          if (progress < 1) {
+            requestAnimationFrame(updateVolume);
+          } else {
+            if (musicAGain.current) {
+              musicAGain.current.gain.setValueAtTime(
+                Math.max(0, Math.min(1, to)), 
+                audioContext.current!.currentTime
+              );
+            }
+            console.log(`Web Audio volume ramp complete. Final volume: ${to}`);
+            resolve();
+          }
+        };
+        
+        requestAnimationFrame(updateVolume);
+      } else {
+        // Fallback to regular HTML5 audio volume
+        const startTime = Date.now();
+        const startVolume = from;
+        const volumeDiff = to - from;
+        
+        audio.volume = startVolume;
+        
+        const updateVolume = () => {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min(elapsed / ms, 1);
+          const newVolume = startVolume + (volumeDiff * progress);
+          
+          audio.volume = Math.max(0, Math.min(1, newVolume));
+          
+          if (progress < 1) {
+            requestAnimationFrame(updateVolume);
+          } else {
+            audio.volume = Math.max(0, Math.min(1, to));
+            console.log(`HTML5 volume ramp complete. Final volume: ${audio.volume}`);
+            resolve();
+          }
+        };
+        
+        requestAnimationFrame(updateVolume);
+      }
     });
   };
 
@@ -92,6 +133,11 @@ export default function DemoSection() {
     // SAFARI FIX: Initialize all audio immediately on user interaction
     // This satisfies Safari's autoplay policy requirements
     try {
+      // Initialize Web Audio API for better volume control on Safari mobile
+      if (!audioContext.current) {
+        audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      
       // Initialize each audio element by playing it silently for a brief moment
       // This "unlocks" the audio for later programmatic control
       if (musicA.current) {
@@ -101,6 +147,16 @@ export default function DemoSection() {
         if (playPromise !== undefined) {
           await playPromise;
         }
+        
+        // Set up Web Audio API for musicA
+        if (!musicASource.current && audioContext.current) {
+          musicASource.current = audioContext.current.createMediaElementSource(musicA.current);
+          musicAGain.current = audioContext.current.createGain();
+          musicASource.current.connect(musicAGain.current);
+          musicAGain.current.connect(audioContext.current.destination);
+          musicAGain.current.gain.setValueAtTime(0.5, audioContext.current.currentTime);
+        }
+        
         // Small delay to ensure the play/pause cycle completes
         await new Promise(resolve => setTimeout(resolve, 50));
         musicA.current.pause();
@@ -163,7 +219,14 @@ export default function DemoSection() {
     // MUSIC START: set musicA.volume = 0.5 and play for 5000ms
     if (musicA.current) {
       console.log('Starting music at volume 0.5');
-      musicA.current.volume = 0.5;
+      // Set volume using Web Audio API if available, fallback to HTML5 audio
+      if (musicAGain.current) {
+        musicAGain.current.gain.setValueAtTime(0.5, audioContext.current!.currentTime);
+        console.log('Using Web Audio API for volume control');
+      } else {
+        musicA.current.volume = 0.5;
+        console.log('Using HTML5 audio for volume control');
+      }
       await play(musicA.current, { fromStart: true });
     }
     await wait(5000);
