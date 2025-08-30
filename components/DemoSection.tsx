@@ -82,21 +82,39 @@ export default function DemoSection() {
     // SAFARI FIX: Initialize all audio immediately on user interaction
     // This satisfies Safari's autoplay policy requirements
     try {
+      // Initialize each audio element by playing it silently for a brief moment
+      // This "unlocks" the audio for later programmatic control
       if (musicA.current) {
         musicA.current.volume = 0;
-        await musicA.current.play();
+        musicA.current.currentTime = 0;
+        const playPromise = musicA.current.play();
+        if (playPromise !== undefined) {
+          await playPromise;
+        }
+        // Small delay to ensure the play/pause cycle completes
+        await new Promise(resolve => setTimeout(resolve, 50));
         musicA.current.pause();
         musicA.current.currentTime = 0;
       }
       if (musicB.current) {
         musicB.current.volume = 0;
-        await musicB.current.play();
+        musicB.current.currentTime = 0;
+        const playPromise = musicB.current.play();
+        if (playPromise !== undefined) {
+          await playPromise;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
         musicB.current.pause();
         musicB.current.currentTime = 0;
       }
       if (voice.current) {
         voice.current.volume = 0;
-        await voice.current.play();
+        voice.current.currentTime = 0;
+        const playPromise = voice.current.play();
+        if (playPromise !== undefined) {
+          await playPromise;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
         voice.current.pause();
         voice.current.currentTime = 0;
       }
@@ -387,8 +405,29 @@ function wait(ms: number) {
 async function play(a?: HTMLAudioElement | null, opts?: { fromStart?: boolean }) {
   if (!a) return;
   try {
-    if (opts?.fromStart) a.currentTime = 0;
-    await a.play();
+    if (opts?.fromStart) {
+      a.currentTime = 0;
+    }
+    // Ensure the audio is ready to play
+    if (a.readyState >= 2) {
+      await a.play();
+    } else {
+      // Wait for audio to be ready
+      await new Promise<void>((resolve, reject) => {
+        const onCanPlay = () => {
+          a.removeEventListener('canplay', onCanPlay);
+          a.removeEventListener('error', onError);
+          a.play().then(() => resolve()).catch(reject);
+        };
+        const onError = () => {
+          a.removeEventListener('canplay', onCanPlay);
+          a.removeEventListener('error', onError);
+          reject(new Error('Audio failed to load'));
+        };
+        a.addEventListener('canplay', onCanPlay);
+        a.addEventListener('error', onError);
+      });
+    }
   } catch (error) {
     // Log the error for debugging but don't break the demo
     console.log('Audio play failed:', error);
