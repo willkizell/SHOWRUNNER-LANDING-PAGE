@@ -30,18 +30,28 @@ export default function DemoSection() {
   // Volume ramping helper
   const rampVolume = (audio: HTMLAudioElement, from: number, to: number, ms: number) => {
     return new Promise<void>((resolve) => {
+      console.log(`Ramping volume from ${from} to ${to} over ${ms}ms`);
       const startTime = Date.now();
       const startVolume = from;
       const volumeDiff = to - from;
       
+      // Set initial volume
+      audio.volume = startVolume;
+      
       const updateVolume = () => {
         const elapsed = Date.now() - startTime;
         const progress = Math.min(elapsed / ms, 1);
-        audio.volume = startVolume + (volumeDiff * progress);
+        const newVolume = startVolume + (volumeDiff * progress);
+        
+        // Ensure volume is within valid range
+        audio.volume = Math.max(0, Math.min(1, newVolume));
         
         if (progress < 1) {
           requestAnimationFrame(updateVolume);
         } else {
+          // Ensure final volume is set
+          audio.volume = Math.max(0, Math.min(1, to));
+          console.log(`Volume ramp complete. Final volume: ${audio.volume}`);
           resolve();
         }
       };
@@ -152,33 +162,53 @@ export default function DemoSection() {
     
     // MUSIC START: set musicA.volume = 0.5 and play for 5000ms
     if (musicA.current) {
+      console.log('Starting music at volume 0.5');
       musicA.current.volume = 0.5;
       await play(musicA.current, { fromStart: true });
     }
     await wait(5000);
     
     // FADE DOWN: ramp musicA.volume from 0.5 to 0.1 over ~600ms
+    console.log('Fading music down for announcement');
     if (musicA.current) {
       await rampVolume(musicA.current, 0.5, 0.1, 600);
     }
     
     // ANNOUNCEMENT: set voice.volume = 1.0; play to completion while musicA continues
     setPhase('announce');
+    console.log('Playing announcement');
     if (voice.current) {
       voice.current.volume = 1.0;
       await play(voice.current, { fromStart: true });
       // Wait for announcement to complete
       await new Promise<void>((resolve) => {
         const handleEnded = () => {
+          console.log('Announcement ended');
           voice.current?.removeEventListener('ended', handleEnded);
           resolve();
         };
+        const handleError = () => {
+          console.log('Announcement error');
+          voice.current?.removeEventListener('ended', handleEnded);
+          voice.current?.removeEventListener('error', handleError);
+          resolve();
+        };
         voice.current?.addEventListener('ended', handleEnded);
+        voice.current?.addEventListener('error', handleError);
+        
+        // Fallback timeout in case events don't fire
+        setTimeout(() => {
+          console.log('Announcement timeout fallback');
+          voice.current?.removeEventListener('ended', handleEnded);
+          voice.current?.removeEventListener('error', handleError);
+          resolve();
+        }, 10000); // 10 second fallback
       });
     }
     
     // RESUME: ramp musicA back up instead of starting new track
     setPhase('resume');
+    console.log('Ramping music back up');
     if (musicA.current) {
       await rampVolume(musicA.current, 0.1, 0.5, 600);
     }
